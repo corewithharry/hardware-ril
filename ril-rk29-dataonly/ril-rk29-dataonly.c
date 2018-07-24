@@ -280,12 +280,19 @@ typedef enum {
     SIM_PIN = 3,
     SIM_PUK = 4,
     SIM_NETWORK_PERSONALIZATION = 5,
-	RUIM_ABSENT = 6,   
-	RUIM_NOT_READY = 7,   
-	RUIM_READY = 8,    
-	RUIM_PIN = 9,   
-	RUIM_PUK = 10,   
-	RUIM_NETWORK_PERSONALIZATION = 11
+    RUIM_ABSENT = 6,   
+    RUIM_NOT_READY = 7,   
+    RUIM_READY = 8,    
+    RUIM_PIN = 9,   
+    RUIM_PUK = 10,   
+    RUIM_NETWORK_PERSONALIZATION = 11,
+    ISIM_ABSENT = 12,
+    ISIM_NOT_READY = 13,
+    ISIM_READY = 14,
+    ISIM_PIN = 15,
+    ISIM_PUK = 16,
+    ISIM_NETWORK_PERSONALIZATION = 17,
+
 } SIM_Status; 
 
 static void onRequest (int request, void *data, size_t datalen, RIL_Token t);
@@ -390,7 +397,7 @@ static void setRadioState(RIL_RadioState newState);
 
 static int rematchModem(const char* modemID, const char* atchannel);
 
-static int isgsm=0;
+static int isgsm=1;
 static int isEth=0;
 static char *callwaiting_num;
 
@@ -1617,12 +1624,12 @@ static void requestQueryNetworkSelectionMode(
     int response = 0;
 
     LOGD("Enter requestQueryNetworkSelectionMode");
-
+/*
 	if(isgsm) { //this command conflicts with the network status command
 	    response = queryNetworkSelectionMode();
 	    if( response < 0 ) goto error;
 	}
-
+*/
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(int));
     return;
 error:
@@ -2097,7 +2104,6 @@ static int getRegistrationInfo(int *regInfo, int* count)
 
         return 0;
     }
-
     // data registration state
     cmd = "AT+CGREG?";
     prefix = "+CGREG:";
@@ -2109,7 +2115,8 @@ static int getRegistrationInfo(int *regInfo, int* count)
         !modem_cmp(0x12d1,0x0117,"MF190")   || 
         !modem_cmp(0x12d1, 0x1506,"E3131")  ||
         !modem_cmp(0x20A6, 0x1105,"HSUPA")  ||
-        !modem_cmp(0x21f5, 0x1101, NULL))
+        !modem_cmp(0x21f5, 0x1101, NULL)    ||
+	!modem_cmp(0x05C6, 0x9000, NULL))
     {
         cmd = "AT+CREG?";
         prefix = "+CREG:";
@@ -2712,6 +2719,9 @@ static void requestRegistrationState(int request, void *data,
     {
         s_reg_rat = response[3];
         network_type = networkType2RAT(response[3]);
+	if(!modem_cmp(0x05C6, 0x9000, NULL)) {
+		network_type = 11;
+	}
         asprintf(&responseStr[3], "%d", network_type);
     }
 
@@ -2721,6 +2731,9 @@ static void requestRegistrationState(int request, void *data,
     if( (response[0]==1 || response[0]==5) && network_type==RADIO_TECHNOLOGY_UNKNOWN )
     {
         network_type = s_current_modem->extATFunc->getNetworkType();
+	if(!modem_cmp(0x05C6, 0x9000, NULL)) {
+		network_type = 11;
+	}
         if(network_type < 0)
             asprintf(&responseStr[3], "%d", RADIO_TECHNOLOGY_UNKNOWN);
         else
@@ -2736,6 +2749,7 @@ static void requestRegistrationState(int request, void *data,
             当本次连接，初始状态CREG/CGREG的状态为2，之后通过主动上报方式告知CREG/CGREG的状态为1.
             但由于s_reg_stat/s_greg_stat已经是1，不会触发上层的主动查询，导致上层误认为CREG/CGREG为2.
  */
+
     if(request == RIL_REQUEST_REGISTRATION_STATE)
         s_reg_stat = response[0];
     else
@@ -2815,7 +2829,12 @@ static void requestOperator(void *data, size_t datalen, RIL_Token t)
 	    info = getOperator( nmsi );
 	    LOGD("info: %p", info);
     }
-    
+   
+    if(!modem_cmp(0x05C6, 0x9000, NULL)) {
+    	response[0] = "China Unicom";
+	response[1] = "China Unicom";
+	response[2] = "46001";
+    } else {
     if( info != NULL )
     {
 		response[0]=info->lalphanumeric;
@@ -2895,6 +2914,7 @@ static void requestOperator(void *data, size_t datalen, RIL_Token t)
             	    response[0] = "China Unicom";
             }
     	}
+    }
     }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, response, sizeof(response));
@@ -4171,6 +4191,9 @@ static int GetIMSI(char* imsi)
             else if(!modem_cmp(0x20A6, 0x1105, "Test number")){
 				response="460039602709144";//手机modem
 				}
+	    else if(!modem_cmp(0x05C6, 0x9000, NULL)) {
+	    			response="460016110776127";
+	    }
             else{
         	    err = at_send_command_singleline("AT+CIMI", "+CIMI:", &p_response);
         	    if (err < 0 || p_response->success == 0) goto loop_error;
@@ -4643,7 +4666,13 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             freeCardStatus(p_card_status);
             break;
         }
-#endif        
+#endif       
+/*	case RIL_REQUEST_VOICE_RADIO_TECH:
+	{
+		int tech = RADIO_TECH_HSPA;
+		RIL_onRequestComplete(t, RIL_E_SUCCESS, &tech, sizeof(tech));
+		break;
+	}*/
         case RIL_REQUEST_GET_CURRENT_CALLS:
             requestGetCurrentCalls(data, datalen, t);
             break;
@@ -5046,7 +5075,25 @@ static int getCardStatus(RIL_CardStatus **pp_card_status) {
           NULL, NULL, 0, RIL_PINSTATE_ENABLED_BLOCKED, RIL_PINSTATE_UNKNOWN },
         // RUIM_NETWORK_PERSONALIZATION = 11
         { RIL_APPTYPE_RUIM, RIL_APPSTATE_SUBSCRIPTION_PERSO, RIL_PERSOSUBSTATE_SIM_NETWORK,
-           NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN }
+           NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
+	// ISIM_ABSENT = 12
+	{ RIL_APPTYPE_UNKNOWN, RIL_APPSTATE_UNKNOWN, RIL_PERSOSUBSTATE_UNKNOWN,
+	   NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+	// ISIM_NOT_READY = 13
+	{ RIL_APPTYPE_ISIM, RIL_APPSTATE_DETECTED, RIL_PERSOSUBSTATE_UNKNOWN,
+	   NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+	// ISIM_READY = 14
+	{ RIL_APPTYPE_ISIM, RIL_APPSTATE_READY, RIL_PERSOSUBSTATE_READY,
+	   NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+	// ISIM_PIN = 15
+	{ RIL_APPTYPE_ISIM, RIL_APPSTATE_PIN, RIL_PERSOSUBSTATE_UNKNOWN,
+	   NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
+	// ISIM_PUK = 16
+	{ RIL_APPTYPE_ISIM, RIL_APPSTATE_PUK, RIL_PERSOSUBSTATE_UNKNOWN,
+	   NULL, NULL, 0, RIL_PINSTATE_ENABLED_BLOCKED, RIL_PINSTATE_UNKNOWN },
+	// ISIM_NETWORK_PERSONALIZATION = 17
+	{ RIL_APPTYPE_ISIM, RIL_APPSTATE_SUBSCRIPTION_PERSO, RIL_PERSOSUBSTATE_SIM_NETWORK,
+	   NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
     };
     RIL_CardState card_state;
     int num_apps;
@@ -5057,7 +5104,7 @@ static int getCardStatus(RIL_CardStatus **pp_card_status) {
         num_apps = 0;
     } else {
         card_state = RIL_CARDSTATE_PRESENT;
-        num_apps = 2;
+        num_apps = 3;
     }
 
     // Allocate and initialize base card status.
@@ -5079,13 +5126,15 @@ static int getCardStatus(RIL_CardStatus **pp_card_status) {
     // that reflects sim_status for gsm.
     if (num_apps != 0) {
         // Only support one app, gsm
-        p_card_status->num_applications = 2;
+        p_card_status->num_applications = 3;
         p_card_status->gsm_umts_subscription_app_index = 0;
         p_card_status->cdma_subscription_app_index = 1;
+	p_card_status->ims_subscription_app_index = 2;
 
         // Get the correct app status
         p_card_status->applications[0] = app_status_array[sim_status];
         p_card_status->applications[1] = app_status_array[sim_status + RUIM_ABSENT];
+	p_card_status->applications[2] = app_status_array[sim_status + ISIM_ABSENT];
     }
 
     *pp_card_status = p_card_status;
@@ -5331,6 +5380,10 @@ static void modemEarlyInit()
           //        err=at_send_command("AT+SAUTOATT=1",NULL);
         //          err=at_send_command("AT+SATT=1,0",NULL);
         }
+	at_send_command("AT+CREG=2",NULL);
+	at_send_command("AT+CGREG=2",NULL);
+	at_send_command("AT+CREG?",NULL);
+	at_send_command("AT+CGREG?",NULL);
 
 }
 
@@ -5395,6 +5448,9 @@ static void initializeCallback(void *param)
     RIL_onUnsolicitedResponse(RIL_UNSOL_RESTRICTED_STATE_CHANGED,
                               &s_restricted_state,
                               sizeof(int) );
+
+    //int tech = RADIO_TECH_HSPA;
+    //RIL_onUnsolicitedResponse(RIL_UNSOL_VOICE_RADIO_TECH_CHANGED,&tech, sizeof(tech));
 
     LOGD("[%s]: === END ===", __FUNCTION__);
 }
