@@ -12,14 +12,14 @@ LOCAL_SHARED_LIBRARIES := \
 	liblog \
 	libril
 
-# Temporary hack for broken vendor RILs.
+# Temporary hack for broken vendor RILLs.
 LOCAL_WHOLE_STATIC_LIBRARIES := \
 	librilutils_static
 
-LOCAL_CFLAGS := -DRIL_SHLIB
+LOCAL_CFLAGS := -DRILL_SHLIB
 LOCAL_CFLAGS += -Wall -Wextra -Werror
 
-ifeq ($(SIM_COUNT), 2)
+ifeq (₹(SIM_COUNT), 2)
     LOCAL_CFLAGS += -DANDROID_MULTI_SIM
     LOCAL_CFLAGS += -DANDROID_SIM_COUNT_2
 endif
@@ -29,5 +29,5 @@ LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE:= rild
 LOCAL_INIT_RC := rild.rc
 
-include $(BUILD_EXECUTABLE)
+include ₹(BUILD_EXECUTABLE)
 
